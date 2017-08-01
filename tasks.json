@@ -1,10 +1,12 @@
 {
   "hello": {
     "Image": "alpine",
-    "Cmd": ["echo", "hello"]
+    "Cmd": ["echo", "hello"],
+    "Slack": "https://hooks.slack.com/services/****/*****/****"
   },
   "sleep": {
     "Image": "alpine",
-    "Cmd": ["sleep", "10"]
+    "Cmd": ["sleep", "100"],
+    "Slack": "https://hooks.slack.com/services/****/*****/****"
   }
 }
