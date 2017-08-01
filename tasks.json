@@ -1,0 +1,10 @@
+{
+  "hello": {
+    "Image": "alpine",
+    "Cmd": ["echo", "hello"]
+  },
+  "sleep": {
+    "Image": "alpine",
+    "Cmd": ["sleep", "10"]
+  }
+}
