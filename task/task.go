@@ -1,13 +1,17 @@
 package task
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"github.com/ashwanthkumar/slack-go-webhook"
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/client"
+	"github.com/docker/docker/pkg/stdcopy"
 	"golang.org/x/net/context"
 	"io/ioutil"
+	"log"
+	"os"
 )
 
 type TaskMap map[string]Task
@@ -19,13 +23,13 @@ type Task struct {
 }
 
 func (t *Task) buildSlackPayload(title *string, text *string, color *string) slack.Payload {
-	attachment := slack.Attachment {
+	attachment := slack.Attachment{
 		Title: title,
-		Text: text,
+		Text:  text,
 		Color: color,
 	}
-	return slack.Payload {
-		Username: "steved",
+	return slack.Payload{
+		Username:    "steved",
 		Attachments: []slack.Attachment{attachment},
 	}
 }
@@ -53,7 +57,10 @@ func (t *Task) NotifyToSlack(payload slack.Payload) {
 	if t.Slack == nil {
 		return
 	}
-	slack.Send(*t.Slack, "", payload)
+	err := slack.Send(*t.Slack, "", payload)
+	if err != nil {
+		log.Println(err)
+	}
 }
 
 func (t *Task) Spawn(name string, env []string) error {
@@ -65,7 +72,26 @@ func (t *Task) Spawn(name string, env []string) error {
 		return err
 	}
 
-	_, err = cli.ImagePull(ctx, t.Image, types.ImagePullOptions{})
+	authJson, ok := os.LookupEnv("DOCKER_AUTH")
+	registryAuth := ""
+	if ok {
+		auth := types.AuthConfig{}
+		err := json.Unmarshal([]byte(authJson), &auth)
+		if err != nil {
+			t.NotifyToSlack(t.buildSlackPayloadFailed(name, err))
+			return err
+		}
+		_, err = cli.RegistryLogin(ctx, auth)
+		if err != nil {
+			t.NotifyToSlack(t.buildSlackPayloadFailed(name, err))
+			return err
+		}
+		registryAuth = base64.StdEncoding.EncodeToString([]byte(authJson))
+	}
+
+	_, err = cli.ImagePull(ctx, t.Image, types.ImagePullOptions{
+		RegistryAuth: registryAuth,
+	})
 	if err != nil {
 		t.NotifyToSlack(t.buildSlackPayloadFailed(name, err))
 		return err
@@ -87,6 +113,20 @@ func (t *Task) Spawn(name string, env []string) error {
 		t.NotifyToSlack(t.buildSlackPayloadFailed(name, err))
 		return err
 	}
+
+	go func() {
+		out, err := cli.ContainerLogs(ctx, resp.ID, types.ContainerLogsOptions{
+			ShowStdout: true,
+			ShowStderr: true,
+			Follow: true,
+			Tail: "all",
+		})
+		if err != nil {
+			log.Println(err)
+			return
+		}
+		stdcopy.StdCopy(os.Stdout, os.Stderr, out)
+	}()
 
 	t.NotifyToSlack(t.buildSlackPayloadSucceed(name))
 	return nil
