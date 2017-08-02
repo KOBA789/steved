@@ -9,6 +9,7 @@ import (
 	"golang.org/x/net/context"
 	"log"
 	"os"
+	"errors"
 )
 
 type Job struct {
@@ -110,6 +111,20 @@ func (j *Job) Run() error {
 		stdcopy.StdCopy(os.Stdout, os.Stderr, out)
 	}()
 
-	j.notifySuccess()
+	go func() {
+		okC, errC := cli.ContainerWait(ctx, resp.ID, "not-running")
+		select {
+		case ok := <-okC:
+			if ok.StatusCode == 0 {
+				j.notifySuccess()
+			} else {
+				j.notifyError(errors.New("Returns non-zero exit code: "+string(ok.StatusCode)))
+			}
+		case err := <-errC:
+			log.Println(err)
+			j.notifyError(err)
+		}
+	}()
+
 	return nil
 }
