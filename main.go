@@ -13,7 +13,21 @@ func jobHandler(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	name := vars["name"]
 
-	task, ok, err := task.GetTask(name)
+	envMap := make(map[string]string)
+	decoder := json.NewDecoder(r.Body)
+	defer r.Body.Close()
+	err := decoder.Decode(&envMap)
+	if err != nil {
+		log.Println(err)
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	env := []string{}
+	for key, value := range envMap {
+		env = append(env, key+"="+value)
+	}
+
+	job, ok, err := task.Spawn(name, env)
 	if err != nil {
 		log.Println(err)
 		w.WriteHeader(http.StatusInternalServerError)
@@ -25,21 +39,7 @@ func jobHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	envMap := make(map[string]string)
-	decoder := json.NewDecoder(r.Body)
-	defer r.Body.Close()
-	err = decoder.Decode(&envMap)
-	if err != nil {
-		log.Println(err)
-		w.WriteHeader(http.StatusBadRequest)
-		return
-	}
-	env := []string{}
-	for key, value := range envMap {
-		env = append(env, key+"="+value)
-	}
-
-	err = task.Spawn(name, env)
+	err = job.Run()
 	if err != nil {
 		log.Println(err)
 		w.WriteHeader(http.StatusConflict)
